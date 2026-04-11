@@ -1,0 +1,7 @@
+---
+name: This is the First Collection
+---
+
+### Get request to anything
+GET https://httpbin.dev/anything
+

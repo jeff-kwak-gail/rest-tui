@@ -1,0 +1,36 @@
+{
+  "name": "rest-tui",
+  "version": "0.11.0",
+  "description": "A TUI REST client",
+  "main": "dist/main.js",
+  "bin": {
+    "rest-tui": "dist/main.js"
+  },
+  "scripts": {
+    "start": "tsx src/main.tsx",
+    "build": "tsc",
+    "test": "vitest run"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "cli-highlight": "^2.1.11",
+    "dotenv": "^17.4.1",
+    "ini": "^6.0.0",
+    "ink": "^6.8.0",
+    "ink-text-input": "^6.0.0",
+    "react": "^19.2.4",
+    "string-width": "^8.2.0"
+  },
+  "devDependencies": {
+    "@types/ini": "^4.1.1",
+    "@types/node": "^25.6.0",
+    "@types/react": "^19.2.14",
+    "ink-testing-library": "^4.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.3"
+  }
+}
