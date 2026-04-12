@@ -44,7 +44,7 @@ function CommandBar({ hints, env }: { hints: string[]; env?: string | null }) {
   return (
     <Box width="100%" gap={2}>
       <Text bold color="cyan">
-        rest-tui v0.11.0
+        rest-tui v0.11.3
       </Text>
       {env ? (
         <Text color="yellow">[{env}]</Text>
@@ -461,7 +461,7 @@ export default function App({ initialFile }: AppProps) {
         <CommandBar
           hints={textInputActive
             ? ["enter - confirm", "esc - cancel"]
-            : ["j/k - navigate", "h/l - collapse/expand", "enter - select", "c - create", "n - env", "q - quit"]
+            : ["j/k - navigate", "h/l - collapse/expand", "/ - search", "enter - select", "e - edit", "c - create", "n - env", "q - quit"]
           }
           env={envName}
         />
@@ -489,6 +489,12 @@ export default function App({ initialFile }: AppProps) {
               setRawMode(true);
               setTreeRefreshKey((k) => k + 1);
             }}
+            onEdit={(path) => {
+              setRawMode(false);
+              openInEditor(path);
+              setRawMode(true);
+              setTreeRefreshKey((k) => k + 1);
+            }}
             onTextInput={setTextInputActive}
             visibleHeight={contentHeight}
             refreshKey={treeRefreshKey}
@@ -508,7 +514,10 @@ export default function App({ initialFile }: AppProps) {
     return (
       <Box flexDirection="column" width={width} height={height}>
         <CommandBar
-          hints={["j/k - navigate", "enter - select", "c - new request", "v - vars", "n - env", "esc - back", "q - quit"]}
+          hints={textInputActive
+            ? ["enter - confirm", "esc - cancel"]
+            : ["j/k - navigate", "/ - search", "enter - select", "c - create", "v - vars", "n - env", "esc - back", "q - quit"]
+          }
           env={envName}
         />
         <Box
@@ -525,6 +534,7 @@ export default function App({ initialFile }: AppProps) {
               setCollection(null);
             }}
             visibleHeight={contentHeight}
+            onTextInput={setTextInputActive}
           />
         </Box>
       </Box>

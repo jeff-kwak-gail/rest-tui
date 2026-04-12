@@ -47,7 +47,7 @@ export function renderCommandBar(
   screenWidth: number,
   env?: string | null
 ): string {
-  const title = chalk.bold.cyan("rest-tui v0.11.0");
+  const title = chalk.bold.cyan("rest-tui v0.11.3");
   const envStr = env ? "  " + chalk.yellow(`[${env}]`) : "";
   const hintsStr = hints.map((h) => chalk.gray(h)).join("  ");
   const line = title + envStr + "  " + hintsStr;

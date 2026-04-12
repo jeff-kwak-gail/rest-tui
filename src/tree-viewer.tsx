@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { Box, Text, useInput } from "ink";
 import TextInput from "ink-text-input";
+import Fuse from "fuse.js";
 import Scrollbar from "./scrollbar.js";
 import {
   buildTree,
@@ -12,6 +13,7 @@ interface TreeViewerProps {
   cwd: string;
   onSelect: (filePath: string, mergedVariables: Record<string, string>) => void;
   onCreate: (name: string, parentFilename: string | null) => void;
+  onEdit: (filePath: string) => void;
   onTextInput?: (active: boolean) => void;
   visibleHeight: number;
   refreshKey?: number;
@@ -21,6 +23,7 @@ export default function TreeViewer({
   cwd,
   onSelect,
   onCreate,
+  onEdit,
   onTextInput,
   visibleHeight,
   refreshKey,
@@ -34,6 +37,8 @@ export default function TreeViewer({
   const [scrollOffset, setScrollOffset] = useState(0);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
+  const [searching, setSearching] = useState(false);
+  const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(() => {
     const set = new Set<string>();
     const walk = (nodes: typeof roots) => {
@@ -48,18 +53,63 @@ export default function TreeViewer({
     return set;
   });
 
-  const rows = useMemo(
+  const allRows = useMemo(
     () => flattenTree(roots, expanded),
     [roots, expanded]
   );
 
+  const fuse = useMemo(
+    () =>
+      new Fuse(allRows, {
+        keys: ["node.displayName", "node.filename", "node.segment"],
+        threshold: 0.4,
+      }),
+    [allRows]
+  );
+
+  const rows = useMemo(() => {
+    if (!query) return allRows;
+    return fuse.search(query).map((result) => result.item);
+  }, [query, allRows, fuse]);
+
   useInput((input, key) => {
+    if (searching) {
+      if (key.escape) {
+        setSearching(false);
+        setQuery("");
+        setCursor(0);
+        setScrollOffset(0);
+        onTextInput?.(false);
+      } else if (key.return) {
+        setSearching(false);
+        onTextInput?.(false);
+        setCursor(0);
+        setScrollOffset(0);
+      }
+      return;
+    }
+
     if (creating) {
       if (key.escape) {
         setCreating(false);
         setNewName("");
         onTextInput?.(false);
       }
+      return;
+    }
+
+    if (key.escape) {
+      if (query) {
+        setQuery("");
+        setCursor(0);
+        setScrollOffset(0);
+      }
+      return;
+    }
+
+    if (input === "/") {
+      setSearching(true);
+      onTextInput?.(true);
       return;
     }
 
@@ -71,6 +121,14 @@ export default function TreeViewer({
     }
 
     if (rows.length === 0) return;
+
+    if (input === "e") {
+      const row = rows[cursor];
+      if (row) {
+        onEdit(row.node.filePath);
+      }
+      return;
+    }
 
     if (key.upArrow || input === "k") {
       setCursor((c) => {
@@ -156,7 +214,7 @@ export default function TreeViewer({
     );
   }
 
-  if (rows.length === 0) {
+  if (allRows.length === 0) {
     return (
       <Box>
         <Text dimColor>No .http files found. Press c to create one.</Text>
@@ -169,6 +227,21 @@ export default function TreeViewer({
   return (
     <Box>
       <Box flexDirection="column" flexGrow={1}>
+        {searching ? (
+          <Box>
+            <Text color="yellow">/</Text>
+            <TextInput value={query} onChange={(value) => {
+              setQuery(value);
+              setCursor(0);
+              setScrollOffset(0);
+            }} />
+          </Box>
+        ) : query ? (
+          <Text dimColor>search: {query} ({rows.length} match{rows.length !== 1 ? "es" : ""})</Text>
+        ) : null}
+        {rows.length === 0 && query ? (
+          <Text dimColor>No matching files.</Text>
+        ) : null}
         {visibleRows.map((row, i) => {
           const idx = scrollOffset + i;
           const selected = idx === cursor;

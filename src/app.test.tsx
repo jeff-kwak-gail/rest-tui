@@ -23,7 +23,7 @@ describe("App", () => {
     const { lastFrame } = render(<App />);
     const frame = lastFrame()!;
     expect(frame).toContain("rest-tui");
-    expect(frame).toContain("v0.11.0");
+    expect(frame).toContain("v0.11.3");
   });
 
   it("shows file browser when no file given", () => {
@@ -275,7 +275,7 @@ describe("TreeViewer", () => {
 
   it("shows message when no .http files found", () => {
     const { lastFrame } = render(
-      <TreeViewer cwd={tmp} onSelect={() => {}} onCreate={() => {}} visibleHeight={20} />
+      <TreeViewer cwd={tmp} onSelect={() => {}} onCreate={() => {}} onEdit={() => {}} visibleHeight={20} />
     );
     expect(lastFrame()).toContain("No .http files found");
   });
@@ -287,7 +287,7 @@ describe("TreeViewer", () => {
     );
     writeFileSync(join(tmp, "child.parent.http"), "GET /b\n");
     const { lastFrame } = render(
-      <TreeViewer cwd={tmp} onSelect={() => {}} onCreate={() => {}} visibleHeight={20} />
+      <TreeViewer cwd={tmp} onSelect={() => {}} onCreate={() => {}} onEdit={() => {}} visibleHeight={20} />
     );
     const frame = lastFrame()!;
     expect(frame).toContain("parent");
@@ -298,7 +298,7 @@ describe("TreeViewer", () => {
   it("shows cursor on first item", () => {
     writeFileSync(join(tmp, "test.http"), "GET /a\n");
     const { lastFrame } = render(
-      <TreeViewer cwd={tmp} onSelect={() => {}} onCreate={() => {}} visibleHeight={20} />
+      <TreeViewer cwd={tmp} onSelect={() => {}} onCreate={() => {}} onEdit={() => {}} visibleHeight={20} />
     );
     expect(lastFrame()).toContain("❯");
   });
@@ -315,6 +315,7 @@ describe("TreeViewer", () => {
         cwd={tmp}
         onSelect={(p, v) => { selectedPath = p; selectedVars = v; }}
         onCreate={() => {}}
+        onEdit={() => {}}
         visibleHeight={20}
       />
     );

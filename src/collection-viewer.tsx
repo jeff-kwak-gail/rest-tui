@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Box, Text, useInput } from "ink";
+import TextInput from "ink-text-input";
+import Fuse from "fuse.js";
 import Scrollbar from "./scrollbar.js";
 import type { Collection } from "./parse-collection.js";
 
@@ -8,6 +10,7 @@ interface CollectionViewerProps {
   onSelect: (index: number) => void;
   onBack: () => void;
   visibleHeight: number;
+  onTextInput?: (active: boolean) => void;
 }
 
 export default function CollectionViewer({
@@ -15,20 +18,75 @@ export default function CollectionViewer({
   onSelect,
   onBack,
   visibleHeight,
+  onTextInput,
 }: CollectionViewerProps) {
   const [cursor, setCursor] = useState(0);
   const [scrollOffset, setScrollOffset] = useState(0);
+  const [searching, setSearching] = useState(false);
+  const [query, setQuery] = useState("");
 
   const { entries } = collection;
-  const totalLines = entries.length;
+
+  const fuse = useMemo(
+    () =>
+      new Fuse(
+        entries.map((entry, index) => ({ ...entry, index })),
+        {
+          keys: ["title", "raw"],
+          threshold: 0.4,
+        }
+      ),
+    [entries]
+  );
+
+  // Filtered entries: each item carries its original index into entries[]
+  const filtered = useMemo(() => {
+    if (!query) return entries.map((entry, index) => ({ entry, index }));
+    return fuse.search(query).map((result) => ({
+      entry: entries[result.item.index],
+      index: result.item.index,
+    }));
+  }, [query, entries, fuse]);
+
+  const totalLines = filtered.length;
 
   useInput((input, key) => {
-    if (key.escape) {
-      onBack();
+    if (searching) {
+      if (key.escape) {
+        setSearching(false);
+        setQuery("");
+        setCursor(0);
+        setScrollOffset(0);
+        onTextInput?.(false);
+      } else if (key.return) {
+        setSearching(false);
+        onTextInput?.(false);
+        // Reset cursor to top of filtered results
+        setCursor(0);
+        setScrollOffset(0);
+      }
       return;
     }
 
-    if (entries.length === 0) return;
+    if (key.escape) {
+      if (query) {
+        // Clear search first
+        setQuery("");
+        setCursor(0);
+        setScrollOffset(0);
+      } else {
+        onBack();
+      }
+      return;
+    }
+
+    if (filtered.length === 0) return;
+
+    if (input === "/") {
+      setSearching(true);
+      onTextInput?.(true);
+      return;
+    }
 
     if (key.upArrow || input === "k") {
       setCursor((c) => {
@@ -38,14 +96,14 @@ export default function CollectionViewer({
       });
     } else if (key.downArrow || input === "j") {
       setCursor((c) => {
-        const next = Math.min(entries.length - 1, c + 1);
+        const next = Math.min(filtered.length - 1, c + 1);
         if (next >= scrollOffset + visibleHeight) {
           setScrollOffset(next - visibleHeight + 1);
         }
         return next;
       });
     } else if (key.return) {
-      onSelect(cursor);
+      onSelect(filtered[cursor].index);
     }
   });
 
@@ -57,7 +115,7 @@ export default function CollectionViewer({
     );
   }
 
-  const visibleEntries = entries.slice(
+  const visibleEntries = filtered.slice(
     scrollOffset,
     scrollOffset + visibleHeight
   );
@@ -70,9 +128,25 @@ export default function CollectionViewer({
             {collection.name}
           </Text>
         ) : null}
-        {visibleEntries.map((entry, i) => {
+        {searching ? (
+          <Box>
+            <Text color="yellow">/</Text>
+            <TextInput value={query} onChange={(value) => {
+              setQuery(value);
+              setCursor(0);
+              setScrollOffset(0);
+            }} />
+          </Box>
+        ) : query ? (
+          <Text dimColor>search: {query} ({filtered.length} match{filtered.length !== 1 ? "es" : ""})</Text>
+        ) : null}
+        {filtered.length === 0 && query ? (
+          <Text dimColor>No matching requests.</Text>
+        ) : null}
+        {visibleEntries.map((item, i) => {
           const idx = scrollOffset + i;
           const selected = idx === cursor;
+          const { entry } = item;
           // Extract method for coloring
           const methodMatch = entry.raw.match(
             /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s/m
@@ -83,7 +157,7 @@ export default function CollectionViewer({
             : entry.title;
 
           return (
-            <Box key={idx} gap={1}>
+            <Box key={item.index} gap={1}>
               <Text color={selected ? "cyan" : undefined}>
                 {selected ? "❯" : " "}
               </Text>
