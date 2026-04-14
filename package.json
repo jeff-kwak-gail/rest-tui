@@ -1,6 +1,6 @@
 {
   "name": "rest-tui",
-  "version": "0.11.3",
+  "version": "0.11.8",
   "description": "A TUI REST client",
   "main": "dist/main.js",
   "bin": {

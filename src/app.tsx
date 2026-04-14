@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { readFileSync, writeFileSync, appendFileSync, existsSync } from "node:fs";
-import { join, basename } from "node:path";
+import { join, basename, dirname } from "node:path";
 import { Box, Text, useApp, useInput, useStdin, useStdout } from "ink";
 import { getRequestLines, colorRequestLines } from "./request-viewer.js";
 import { getResponseLines } from "./response-viewer.js";
@@ -44,7 +44,7 @@ function CommandBar({ hints, env }: { hints: string[]; env?: string | null }) {
   return (
     <Box width="100%" gap={2}>
       <Text bold color="cyan">
-        rest-tui v0.11.3
+        rest-tui v0.11.8
       </Text>
       {env ? (
         <Text color="yellow">[{env}]</Text>
@@ -83,8 +83,8 @@ export default function App({ initialFile }: AppProps) {
       const col = parseCollection(content);
 
       // Resolve ancestor variables via the tree
-      const cwd = process.cwd();
-      const { nodeMap } = buildTree(cwd);
+      const dir = dirname(fileToLoad);
+      const { nodeMap } = buildTree(dir);
       const fname = basename(fileToLoad);
       const ancestorVars = nodeMap.has(fname) ? resolveVariables(fname, nodeMap) : {};
       col.variables = { ...ancestorVars, ...col.variables };
@@ -135,6 +135,7 @@ export default function App({ initialFile }: AppProps) {
   const [showHistory, setShowHistory] = useState(false);
   const [responseHistory, setResponseHistory] = useState<HttpResponse[]>(() => loadResponseHistory(process.cwd()));
   const [showResponseHistory, setShowResponseHistory] = useState(false);
+  const [resolvedRequest, setResolvedRequest] = useState<string | null>(null);
 
   const [width, setWidth] = useState(stdout?.columns ?? 80);
   const [height, setHeight] = useState(stdout?.rows ?? 24);
@@ -173,9 +174,31 @@ export default function App({ initialFile }: AppProps) {
   const requestVisibleHeight = contentHeight - historyLines.length;
   const responseVisibleHeight = contentHeight - responseHistoryLines.length;
   const totalRequestLines = getRequestLines(request).length;
-  const totalResponseLines = response
-    ? getResponseLines(response, paneContentWidth).length
-    : 0;
+  const requestPrefix = resolvedRequest
+    ? (() => {
+        for (const line of resolvedRequest.split("\n")) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith("#")) continue;
+          if (/^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s/i.test(trimmed)) {
+            return colorRequestLines(trimmed)[0];
+          }
+          break;
+        }
+        return null;
+      })()
+    : null;
+  const respLines = response
+    ? (() => {
+        const lines = getResponseLines(response, paneContentWidth);
+        if (requestPrefix) lines[0] = requestPrefix + "  " + lines[0];
+        return lines;
+      })()
+    : loading
+      ? [requestPrefix ? requestPrefix + "  Sending request..." : "Sending request..."]
+      : error
+        ? [requestPrefix ? requestPrefix + "  Error: " + error : "Error: " + error]
+        : [];
+  const totalResponseLines = respLines.length;
 
   const clampRequestScroll = (offset: number) =>
     Math.max(0, Math.min(offset, Math.max(0, totalRequestLines - requestVisibleHeight)));
@@ -183,8 +206,15 @@ export default function App({ initialFile }: AppProps) {
     Math.max(0, Math.min(offset, Math.max(0, totalResponseLines - responseVisibleHeight)));
 
   // Load file and parse collection
+  const getAncestorVariables = useCallback((path: string): Record<string, string> => {
+    const dir = dirname(path);
+    const { nodeMap } = buildTree(dir);
+    const fname = basename(path);
+    return nodeMap.has(fname) ? resolveVariables(fname, nodeMap) : {};
+  }, []);
+
   const loadCollection = useCallback(
-    (path: string, ancestorVariables: Record<string, string> = {}) => {
+    (path: string, ancestorVariables?: Record<string, string>) => {
       let col: Collection;
       try {
         const content = loadFile(path);
@@ -194,7 +224,8 @@ export default function App({ initialFile }: AppProps) {
         return;
       }
       // Merge ancestor variables (ancestors as base, self overrides)
-      col.variables = { ...ancestorVariables, ...col.variables };
+      const ancestors = ancestorVariables ?? getAncestorVariables(path);
+      col.variables = { ...ancestors, ...col.variables };
       setParseError(null);
       setFilePath(path);
       setCollection(col);
@@ -223,6 +254,7 @@ export default function App({ initialFile }: AppProps) {
     setRequest(collection.entries[index].raw);
     setResponse(null);
     setError(null);
+    setResolvedRequest(null);
     setRequestScroll(0);
     setResponseScroll(0);
     setFocus("request");
@@ -242,9 +274,10 @@ export default function App({ initialFile }: AppProps) {
       const filtered = prev.filter((h) => h !== request);
       return [request, ...filtered].slice(0, 10);
     });
+    const allVars = { ...(collection?.variables ?? {}), ...envVars };
+    const resolved = substituteVariables(request, allVars);
+    setResolvedRequest(resolved);
     try {
-      const allVars = { ...envVars, ...(collection?.variables ?? {}) };
-      const resolved = substituteVariables(request, allVars);
       const res = await executeRequest(resolved);
       setResponse(res);
       setResponseHistory((prev) => [res, ...prev].slice(0, 10));
@@ -255,7 +288,7 @@ export default function App({ initialFile }: AppProps) {
     } finally {
       setLoading(false);
     }
-  }, [request]);
+  }, [request, collection, envVars]);
 
   useInput((input, key) => {
     // Skip all key handling when a text input is active
@@ -287,6 +320,8 @@ export default function App({ initialFile }: AppProps) {
         const updated = openInEditor(filePath, 1);
         setRawMode(true);
         const col = parseCollection(updated);
+        const ancestors = getAncestorVariables(filePath);
+        col.variables = { ...ancestors, ...col.variables };
         setCollection(col);
         if (selectedEntry < col.entries.length) {
           setRequest(col.entries[selectedEntry].raw);
@@ -303,6 +338,19 @@ export default function App({ initialFile }: AppProps) {
       if (input === "v" && collection) {
         setView("variables");
       }
+      if (input === "e" && filePath) {
+        setRawMode(false);
+        const updated = openInEditor(filePath);
+        setRawMode(true);
+        try {
+          const col = parseCollection(updated);
+          const ancestors = getAncestorVariables(filePath);
+          col.variables = { ...ancestors, ...col.variables };
+          setCollection(col);
+        } catch {
+          // Parse error — stay on collection view
+        }
+      }
       if (input === "c" && filePath) {
         // Append a new request section and open editor there
         const content = loadFile(filePath);
@@ -316,6 +364,8 @@ export default function App({ initialFile }: AppProps) {
         // Re-parse and select the new entry
         try {
           const col = parseCollection(updated);
+          const ancestors = getAncestorVariables(filePath);
+          col.variables = { ...ancestors, ...col.variables };
           setCollection(col);
           if (col.entries.length > 0) {
             const lastIdx = col.entries.length - 1;
@@ -345,7 +395,7 @@ export default function App({ initialFile }: AppProps) {
     if (input === "q") {
       exit();
     }
-    if (input === "v" && collection && focus === "request") {
+    if (input === "v" && collection) {
       setView("variables");
     }
     if (key.tab) {
@@ -368,19 +418,18 @@ export default function App({ initialFile }: AppProps) {
     if (input === "e" && filePath && focus === "request") {
       // Find the line number of the current request in the file
       const fileContent = loadFile(filePath);
-      const entryRaw = collection?.entries[selectedEntry]?.raw;
       let line: number | undefined;
-      if (entryRaw) {
-        const idx = fileContent.indexOf(entryRaw);
-        if (idx !== -1) {
-          line = fileContent.slice(0, idx).split("\n").length;
-        }
+      const idx = fileContent.indexOf(request);
+      if (idx !== -1) {
+        line = fileContent.slice(0, idx).split("\n").length;
       }
       setRawMode(false);
       const updated = openInEditor(filePath, line);
       setRawMode(true);
       // Re-parse collection and reload current entry
       const col = parseCollection(updated);
+      const ancestors = getAncestorVariables(filePath);
+      col.variables = { ...ancestors, ...col.variables };
       setCollection(col);
       if (selectedEntry < col.entries.length) {
         setRequest(col.entries[selectedEntry].raw);
@@ -410,6 +459,7 @@ export default function App({ initialFile }: AppProps) {
         setRequest(history[idx]);
         setResponse(null);
         setError(null);
+        setResolvedRequest(null);
         setRequestScroll(0);
         setResponseScroll(0);
         setFocus("request");
@@ -516,7 +566,7 @@ export default function App({ initialFile }: AppProps) {
         <CommandBar
           hints={textInputActive
             ? ["enter - confirm", "esc - cancel"]
-            : ["j/k - navigate", "/ - search", "enter - select", "c - create", "v - vars", "n - env", "esc - back", "q - quit"]
+            : ["j/k - navigate", "/ - search", "enter - select", "e - edit", "c - create", "v - vars", "n - env", "esc - back", "q - quit"]
           }
           env={envName}
         />
@@ -554,10 +604,40 @@ export default function App({ initialFile }: AppProps) {
           <VariablesViewer variables={(() => {
             const tagged: TaggedVariable[] = [];
             const collectionKeys = new Set<string>();
-            for (const [key, value] of Object.entries(collection.variables)) {
-              tagged.push({ key, value, source: collection.name || "collection", sourceType: "collection" });
-              collectionKeys.add(key);
+
+            // Walk the ancestor chain to tag each variable with its true source
+            if (filePath) {
+              const dir = dirname(filePath);
+              const { nodeMap } = buildTree(dir);
+              const fname = basename(filePath);
+              const chain: { name: string; variables: Record<string, string> }[] = [];
+              let cur = fname;
+              while (nodeMap.has(cur)) {
+                const node = nodeMap.get(cur)!;
+                chain.unshift({ name: node.displayName || node.segment, variables: node.variables });
+                const bn = cur.slice(0, -5);
+                const segs = bn.split(".");
+                const parentBn = segs.slice(1).join(".");
+                cur = parentBn ? `${parentBn}.http` : "";
+              }
+              // Track which key is last set by which source (last wins)
+              const resolved = new Map<string, { value: string; source: string }>();
+              for (const link of chain) {
+                for (const [key, value] of Object.entries(link.variables)) {
+                  resolved.set(key, { value, source: link.name });
+                }
+              }
+              for (const [key, { value, source }] of resolved) {
+                tagged.push({ key, value, source, sourceType: "collection" });
+                collectionKeys.add(key);
+              }
+            } else {
+              for (const [key, value] of Object.entries(collection.variables)) {
+                tagged.push({ key, value, source: collection.name || "collection", sourceType: "collection" });
+                collectionKeys.add(key);
+              }
             }
+
             for (const [key, value] of Object.entries(envVars)) {
               tagged.push({
                 key,
@@ -660,6 +740,7 @@ export default function App({ initialFile }: AppProps) {
     "g/G - top/bottom",
     "h - history",
     "tab - request",
+    "v - vars",
     "n - env",
     "esc - back",
     "q - quit",
@@ -676,14 +757,6 @@ export default function App({ initialFile }: AppProps) {
       </Text>
     );
   }
-
-  const respLines = response
-    ? getResponseLines(response, paneContentWidth)
-    : loading
-      ? ["Sending request..."]
-      : error
-        ? [`Error: ${error}`]
-        : [];
 
   return (
     <Text>
