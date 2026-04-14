@@ -1,4 +1,5 @@
 import chalk from "chalk";
+import cliTruncate from "cli-truncate";
 import { Box, Text } from "ink";
 
 export interface TaggedVariable {
@@ -11,10 +12,12 @@ export interface TaggedVariable {
 
 interface VariablesViewerProps {
   variables: TaggedVariable[];
+  contentWidth?: number;
 }
 
 export default function VariablesViewer({
   variables,
+  contentWidth,
 }: VariablesViewerProps) {
   if (variables.length === 0) {
     return (
@@ -25,7 +28,14 @@ export default function VariablesViewer({
   }
 
   const maxKeyLen = Math.max(...variables.map((v) => v.key.length));
-  const maxValLen = Math.max(...variables.map((v) => v.value.length));
+  const maxSourceLen = Math.max(
+    ...variables.map((v) => (v.overridden ? `${v.source} (overridden)` : v.source).length)
+  );
+  // key(padded) + 2 gaps of 2 + source(padded) = fixed columns
+  const fixedWidth = maxKeyLen + 2 + 2 + maxSourceLen;
+  const maxValLen = contentWidth
+    ? Math.max(8, contentWidth - fixedWidth)
+    : Math.max(...variables.map((v) => v.value.length));
 
   const colorSource = (v: TaggedVariable): string => {
     const label = v.overridden ? `${v.source} (overridden)` : v.source;
@@ -35,7 +45,7 @@ export default function VariablesViewer({
 
   const lines = variables.map((v) => {
     const key = v.key.padEnd(maxKeyLen);
-    const val = v.value.padEnd(maxValLen);
+    const val = cliTruncate(v.value, maxValLen, { position: "end" });
     if (v.overridden) {
       return `${chalk.strikethrough.dim(key)}  ${chalk.strikethrough.dim(val)}  ${colorSource(v)}`;
     }

@@ -47,7 +47,7 @@ export function renderCommandBar(
   screenWidth: number,
   env?: string | null
 ): string {
-  const title = chalk.bold.cyan("rest-tui v0.11.8");
+  const title = chalk.bold.cyan("rest-tui v0.12.1");
   const envStr = env ? "  " + chalk.yellow(`[${env}]`) : "";
   const hintsStr = hints.map((h) => chalk.gray(h)).join("  ");
   const line = title + envStr + "  " + hintsStr;
@@ -118,6 +118,75 @@ export function renderResponseHistoryPanel(
     }
   }
   return lines;
+}
+
+export function renderHelpPopup(
+  hints: string[],
+  screenWidth: number,
+  screenHeight: number,
+  commandBar: string,
+): string {
+  const g = chalk.gray;
+  const w = chalk.white.bold;
+
+  // Parse hints into key/desc columns
+  const parsed = hints.map((h) => {
+    const idx = h.indexOf(" - ");
+    return idx === -1 ? { key: h, desc: "" } : { key: h.slice(0, idx), desc: h.slice(idx + 3) };
+  });
+  const maxKeyLen = Math.max(...parsed.map((p) => p.key.length));
+
+  const popupLines = parsed.map(({ key, desc }) =>
+    chalk.yellow(key.padEnd(maxKeyLen)) + "  " + desc
+  );
+
+  // Popup dimensions
+  const title = " Commands ";
+  const maxLineWidth = Math.max(...popupLines.map((l) => stringWidth(l)), title.length);
+  const popupInnerWidth = maxLineWidth + 4;
+  const popupContentRows = popupLines.length + 2; // blank top + lines + blank bottom
+  const popupHeight = popupContentRows + 2; // + borders
+
+  // Screen layout
+  const innerWidth = screenWidth - 2;
+  const contentHeight = screenHeight - 3;
+
+  const startRow = Math.max(0, Math.floor((contentHeight - popupHeight) / 2));
+  const startCol = Math.max(0, Math.floor((innerWidth - (popupInnerWidth + 2)) / 2));
+
+  const rows: string[] = [];
+  rows.push(commandBar);
+  rows.push(g("╭" + "─".repeat(innerWidth) + "╮"));
+
+  for (let i = 0; i < contentHeight; i++) {
+    const rel = i - startRow;
+    let lineContent: string;
+
+    if (rel === 0) {
+      const pad = popupInnerWidth - title.length;
+      const lp = Math.floor(pad / 2);
+      const rp = pad - lp;
+      lineContent = " ".repeat(startCol) + w("╭" + "─".repeat(lp) + title + "─".repeat(rp) + "╮");
+    } else if (rel > 0 && rel <= popupContentRows) {
+      const idx = rel - 1;
+      let cell: string;
+      if (idx === 0 || idx > popupLines.length) {
+        cell = " ".repeat(popupInnerWidth);
+      } else {
+        cell = "  " + padLine(popupLines[idx - 1], popupInnerWidth - 2);
+      }
+      lineContent = " ".repeat(startCol) + w("│") + cell + w("│");
+    } else if (rel === popupContentRows + 1) {
+      lineContent = " ".repeat(startCol) + w("╰" + "─".repeat(popupInnerWidth) + "╯");
+    } else {
+      lineContent = "";
+    }
+
+    rows.push(g("│") + padLine(lineContent, innerWidth) + g("│"));
+  }
+
+  rows.push(g("╰" + "─".repeat(innerWidth) + "╯"));
+  return rows.join("\n");
 }
 
 export function renderSinglePane(

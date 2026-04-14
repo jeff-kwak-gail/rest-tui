@@ -23,7 +23,7 @@ describe("App", () => {
     const { lastFrame } = render(<App />);
     const frame = lastFrame()!;
     expect(frame).toContain("rest-tui");
-    expect(frame).toContain("v0.11.8");
+    expect(frame).toContain("v0.12.1");
   });
 
   it("shows file browser when no file given", () => {
@@ -41,7 +41,7 @@ describe("App", () => {
     const { lastFrame, unmount } = render(<App initialFile={file} />);
     const frame = lastFrame()!;
     expect(frame).toContain("GET");
-    expect(frame).toContain("enter - send");
+    expect(frame).toContain("? - help");
     unmount();
     rmSync(tmp, { recursive: true });
   });

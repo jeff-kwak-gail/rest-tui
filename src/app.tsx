@@ -6,6 +6,7 @@ import { getRequestLines, colorRequestLines } from "./request-viewer.js";
 import { getResponseLines } from "./response-viewer.js";
 import {
   renderCommandBar,
+  renderHelpPopup,
   renderSinglePane,
   renderSplitPane,
   renderHistoryPanel,
@@ -44,7 +45,7 @@ function CommandBar({ hints, env }: { hints: string[]; env?: string | null }) {
   return (
     <Box width="100%" gap={2}>
       <Text bold color="cyan">
-        rest-tui v0.11.8
+        rest-tui v0.12.1
       </Text>
       {env ? (
         <Text color="yellow">[{env}]</Text>
@@ -136,6 +137,7 @@ export default function App({ initialFile }: AppProps) {
   const [responseHistory, setResponseHistory] = useState<HttpResponse[]>(() => loadResponseHistory(process.cwd()));
   const [showResponseHistory, setShowResponseHistory] = useState(false);
   const [resolvedRequest, setResolvedRequest] = useState<string | null>(null);
+  const [showHelp, setShowHelp] = useState(false);
 
   const [width, setWidth] = useState(stdout?.columns ?? 80);
   const [height, setHeight] = useState(stdout?.rows ?? 24);
@@ -293,6 +295,18 @@ export default function App({ initialFile }: AppProps) {
   useInput((input, key) => {
     // Skip all key handling when a text input is active
     if (textInputActive) return;
+
+    // Help popup
+    if (showHelp) {
+      if (input === "?" || key.escape) {
+        setShowHelp(false);
+      }
+      return;
+    }
+    if (input === "?") {
+      setShowHelp(true);
+      return;
+    }
 
     // Global: n opens env picker from any view (except env-picker itself)
     if (input === "n" && view !== "env-picker") {
@@ -504,15 +518,40 @@ export default function App({ initialFile }: AppProps) {
     }
   });
 
+  // Context-sensitive help hints
+  const currentHints = (() => {
+    switch (view) {
+      case "file-browser":
+        return ["j/k - navigate", "h/l - collapse/expand", "/ - search", "enter - select", "e - edit", "c - create", "n - env", "q - quit"];
+      case "collection":
+        return ["j/k - navigate", "/ - search", "enter - select", "e - edit", "c - create", "v - vars", "n - env", "esc - back", "q - quit"];
+      case "variables":
+        return ["e - edit", "n - env", "esc - back", "q - quit"];
+      case "env-picker":
+        return ["j/k - navigate", "enter - select", "e - edit", "c - create", "esc - back", "q - quit"];
+      case "request":
+        return focus === "response"
+          ? ["j/k - scroll", "u/d - page", "g/G - top/bottom", "h - history", "tab - request", "v - vars", "n - env", "esc - back", "q - quit"]
+          : ["enter - send", "e - edit", "h - history", "tab - response", "v - vars", "n - env", "j/k - scroll", "esc - back", "q - quit"];
+    }
+  })();
+
+  // Help popup
+  if (showHelp) {
+    const cmdBar = renderCommandBar(["esc/? - close"], width, envName);
+    return (
+      <Text>
+        {renderHelpPopup(currentHints, width, height, cmdBar)}
+      </Text>
+    );
+  }
+
   // File browser view
   if (view === "file-browser") {
     return (
       <Box flexDirection="column" width={width} height={height}>
         <CommandBar
-          hints={textInputActive
-            ? ["enter - confirm", "esc - cancel"]
-            : ["j/k - navigate", "h/l - collapse/expand", "/ - search", "enter - select", "e - edit", "c - create", "n - env", "q - quit"]
-          }
+          hints={textInputActive ? ["enter - confirm", "esc - cancel"] : ["? - help"]}
           env={envName}
         />
         <Box
@@ -564,10 +603,7 @@ export default function App({ initialFile }: AppProps) {
     return (
       <Box flexDirection="column" width={width} height={height}>
         <CommandBar
-          hints={textInputActive
-            ? ["enter - confirm", "esc - cancel"]
-            : ["j/k - navigate", "/ - search", "enter - select", "e - edit", "c - create", "v - vars", "n - env", "esc - back", "q - quit"]
-          }
+          hints={textInputActive ? ["enter - confirm", "esc - cancel"] : ["? - help"]}
           env={envName}
         />
         <Box
@@ -595,7 +631,7 @@ export default function App({ initialFile }: AppProps) {
   if (view === "variables" && collection) {
     return (
       <Box flexDirection="column" width={width} height={height}>
-        <CommandBar hints={["e - edit", "n - env", "esc - back", "q - quit"]} env={envName} />
+        <CommandBar hints={["? - help"]} env={envName} />
         <Box
           flexGrow={1}
           borderStyle="round"
@@ -648,7 +684,7 @@ export default function App({ initialFile }: AppProps) {
               });
             }
             return tagged;
-          })()} />
+          })()} contentWidth={width - 4} />
         </Box>
       </Box>
     );
@@ -660,10 +696,7 @@ export default function App({ initialFile }: AppProps) {
     return (
       <Box flexDirection="column" width={width} height={height}>
         <CommandBar
-          hints={textInputActive
-            ? ["enter - confirm", "esc - cancel"]
-            : ["j/k - navigate", "enter - select", "e - edit", "c - create", "esc - back", "q - quit"]
-          }
+          hints={textInputActive ? ["enter - confirm", "esc - cancel"] : ["? - help"]}
           env={envName}
         />
         <Box
@@ -722,32 +755,7 @@ export default function App({ initialFile }: AppProps) {
   }
 
   // Request view
-  const requestHints = [
-    "enter - send",
-    "e - edit",
-    "h - history",
-    "tab - response",
-    "v - vars",
-    "n - env",
-    "j/k - scroll",
-    "esc - back",
-    "q - quit",
-  ];
-
-  const responseHints = [
-    "j/k - scroll",
-    "u/d - page",
-    "g/G - top/bottom",
-    "h - history",
-    "tab - request",
-    "v - vars",
-    "n - env",
-    "esc - back",
-    "q - quit",
-  ];
-
-  const hints = focus === "response" ? responseHints : requestHints;
-  const cmdBar = renderCommandBar(hints, width, envName);
+  const cmdBar = renderCommandBar(["? - help"], width, envName);
   const reqLines = colorRequestLines(request);
 
   if (!showSplit) {
