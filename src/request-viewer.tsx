@@ -65,7 +65,7 @@ function highlightJson(lines: string[]): string[] {
 
 export function getRequestLines(request: string): string[] {
   if (!request) return [];
-  return request.split("\n");
+  return request.replace(/\t/g, "  ").split("\n");
 }
 
 export function colorRequestLines(request: string): string[] {

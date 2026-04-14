@@ -1,4 +1,5 @@
 import chalk from "chalk";
+import wrapAnsi from "wrap-ansi";
 import { Box, Text } from "ink";
 import { highlight } from "cli-highlight";
 import { renderPane } from "./render-pane.js";
@@ -78,8 +79,10 @@ export function getResponseLines(
 
   if (response.body) {
     const contentType = response.headers["content-type"] || "";
+    const highlighted = highlightBody(response.body, contentType).replace(/\t/g, "  ");
+    const wrapped = wrapAnsi(highlighted, contentWidth, { hard: true, trim: false });
     lines.push("");
-    lines.push(...highlightBody(response.body, contentType).split("\n"));
+    lines.push(...wrapped.split("\n"));
   }
 
   return lines;

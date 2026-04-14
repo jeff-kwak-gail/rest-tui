@@ -45,7 +45,7 @@ function CommandBar({ hints, env }: { hints: string[]; env?: string | null }) {
   return (
     <Box width="100%" gap={2}>
       <Text bold color="cyan">
-        rest-tui v0.12.2
+        rest-tui v0.12.8
       </Text>
       {env ? (
         <Text color="yellow">[{env}]</Text>
@@ -430,10 +430,16 @@ export default function App({ initialFile }: AppProps) {
       }
     }
     if (input === "e" && filePath && focus === "request") {
-      // Find the line number of the current request in the file
+      // Find the line number of the displayed request in the file,
+      // falling back to the selected entry if the request is from history
       const fileContent = loadFile(filePath);
       let line: number | undefined;
-      const idx = fileContent.indexOf(request);
+      let searchText = request;
+      let idx = fileContent.indexOf(searchText);
+      if (idx === -1) {
+        searchText = collection?.entries[selectedEntry]?.raw ?? "";
+        idx = fileContent.indexOf(searchText);
+      }
       if (idx !== -1) {
         line = fileContent.slice(0, idx).split("\n").length;
       }
@@ -470,7 +476,12 @@ export default function App({ initialFile }: AppProps) {
     if (numKey >= 1 && numKey <= 10) {
       const idx = numKey - 1;
       if (focus === "request" && idx < history.length) {
-        setRequest(history[idx]);
+        const historyReq = history[idx];
+        setRequest(historyReq);
+        if (collection) {
+          const matchIdx = collection.entries.findIndex((e) => e.raw === historyReq);
+          if (matchIdx !== -1) setSelectedEntry(matchIdx);
+        }
         setResponse(null);
         setError(null);
         setResolvedRequest(null);
