@@ -45,7 +45,7 @@ function CommandBar({ hints, env }: { hints: string[]; env?: string | null }) {
   return (
     <Box width="100%" gap={2}>
       <Text bold color="cyan">
-        rest-tui v0.12.1
+        rest-tui v0.12.2
       </Text>
       {env ? (
         <Text color="yellow">[{env}]</Text>
@@ -733,6 +733,7 @@ export default function App({ initialFile }: AppProps) {
             }}
             onCreate={(name) => {
               const env = createEnvironment(process.cwd(), name);
+              if (!env) return; // Already exists
               setEnvVars(env.variables);
               setEnvName(env.name);
               saveSettings(process.cwd(), { environment: env.name });

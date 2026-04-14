@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { parse } from "dotenv";
 
@@ -25,13 +25,14 @@ export function listEnvironments(cwd: string): Environment[] {
   });
 }
 
-export function createEnvironment(cwd: string, name: string): Environment {
+export function createEnvironment(cwd: string, name: string): Environment | null {
   const slug = name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
   const filename = `${slug}.env`;
   const filePath = join(cwd, filename);
+  if (existsSync(filePath)) return null;
   writeFileSync(filePath, "", "utf-8");
   return { name: slug, filePath, variables: {} };
 }
