@@ -46,7 +46,7 @@ function CommandBar({ hints, env }: { hints: string[]; env?: string | null }) {
   return (
     <Box width="100%" gap={2}>
       <Text bold color="cyan">
-        rest-tui v0.13.2
+        rest-tui v0.13.3
       </Text>
       {env ? (
         <Text color="yellow">[{env}]</Text>
@@ -313,16 +313,40 @@ export default function App({ initialFile }: AppProps) {
       }
     }
 
-    // Last resort: show the raw text (edit won't find the source)
-    setRequest(entry.raw);
-    setResponse(null);
-    setError(null);
-    setResolvedRequest(null);
-    setRequestScroll(0);
-    setResponseScroll(0);
-    setFocus("request");
-    if (view !== "request") setView("request");
-    return true;
+    // Legacy fallback: scan every .http file in cwd for a matching raw
+    try {
+      const { nodeMap } = buildTree(process.cwd());
+      for (const node of nodeMap.values()) {
+        try {
+          const content = loadFile(node.filePath);
+          const col = parseCollection(content);
+          const idx = col.entries.findIndex((e) => e.raw === entry.raw);
+          if (idx !== -1) {
+            const ancestors = getAncestorVariables(node.filePath);
+            col.variables = { ...ancestors, ...col.variables };
+            setFilePath(node.filePath);
+            setCollection(col);
+            setSelectedEntry(idx);
+            setRequest(col.entries[idx].raw);
+            setResponse(null);
+            setError(null);
+            setResolvedRequest(null);
+            setRequestScroll(0);
+            setResponseScroll(0);
+            setFocus("request");
+            setView("request");
+            saveSettings(process.cwd(), { ...loadSettings(process.cwd()), lastFile: node.filePath, lastEntry: idx });
+            return true;
+          }
+        } catch {
+          // Skip files that fail to parse
+        }
+      }
+    } catch {
+      // Tree scan failed — fall through
+    }
+
+    return false;
   };
 
   const sendRequest = useCallback(async () => {
