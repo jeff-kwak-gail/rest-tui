@@ -24,6 +24,7 @@ import {
   saveRequestHistory,
   loadResponseHistory,
   saveResponseHistory,
+  type RequestHistoryEntry,
 } from "./settings.js";
 import { openInEditor } from "./editor.js";
 import { executeRequest, type HttpResponse } from "./execute-request.js";
@@ -45,7 +46,7 @@ function CommandBar({ hints, env }: { hints: string[]; env?: string | null }) {
   return (
     <Box width="100%" gap={2}>
       <Text bold color="cyan">
-        rest-tui v0.13.1
+        rest-tui v0.13.2
       </Text>
       {env ? (
         <Text color="yellow">[{env}]</Text>
@@ -132,7 +133,7 @@ export default function App({ initialFile }: AppProps) {
   const [previousView, setPreviousView] = useState<View>("file-browser");
   const [treeRefreshKey, setTreeRefreshKey] = useState(0);
   const [textInputActive, setTextInputActive] = useState(false);
-  const [history, setHistory] = useState<string[]>(() => loadRequestHistory(process.cwd()));
+  const [history, setHistory] = useState<RequestHistoryEntry[]>(() => loadRequestHistory(process.cwd()));
   const [showHistory, setShowHistory] = useState(false);
   const [responseHistory, setResponseHistory] = useState<HttpResponse[]>(() => loadResponseHistory(process.cwd()));
   const [showResponseHistory, setShowResponseHistory] = useState(false);
@@ -266,15 +267,78 @@ export default function App({ initialFile }: AppProps) {
     }
   };
 
+  // Load a history entry, switching files if needed so filePath/selectedEntry
+  // always match the displayed request. Returns true if handled.
+  const loadHistoryEntry = (entry: RequestHistoryEntry): boolean => {
+    // Prefer the entry's recorded source file
+    if (entry.filePath && existsSync(entry.filePath)) {
+      try {
+        const content = loadFile(entry.filePath);
+        const col = parseCollection(content);
+        const ancestors = getAncestorVariables(entry.filePath);
+        col.variables = { ...ancestors, ...col.variables };
+
+        // Prefer matching raw text (file may have been edited since)
+        let idx = col.entries.findIndex((e) => e.raw === entry.raw);
+        if (idx === -1 && entry.entryIndex >= 0 && entry.entryIndex < col.entries.length) {
+          idx = entry.entryIndex;
+        }
+
+        if (idx >= 0 && idx < col.entries.length) {
+          setFilePath(entry.filePath);
+          setCollection(col);
+          setSelectedEntry(idx);
+          setRequest(col.entries[idx].raw);
+          setResponse(null);
+          setError(null);
+          setResolvedRequest(null);
+          setRequestScroll(0);
+          setResponseScroll(0);
+          setFocus("request");
+          setView("request");
+          saveSettings(process.cwd(), { ...loadSettings(process.cwd()), lastFile: entry.filePath, lastEntry: idx });
+          return true;
+        }
+      } catch {
+        // fall through to legacy lookup
+      }
+    }
+
+    // Legacy entries (no filePath) — try to match raw in current collection
+    if (collection) {
+      const idx = collection.entries.findIndex((e) => e.raw === entry.raw);
+      if (idx !== -1) {
+        handleEntrySelect(idx);
+        return true;
+      }
+    }
+
+    // Last resort: show the raw text (edit won't find the source)
+    setRequest(entry.raw);
+    setResponse(null);
+    setError(null);
+    setResolvedRequest(null);
+    setRequestScroll(0);
+    setResponseScroll(0);
+    setFocus("request");
+    if (view !== "request") setView("request");
+    return true;
+  };
+
   const sendRequest = useCallback(async () => {
     setLoading(true);
     setError(null);
     setResponse(null);
     setResponseScroll(0);
-    // Push to history (dedup, cap at 10)
+    // Push to history (dedup by raw+filePath, cap at 10)
+    const entry: RequestHistoryEntry = {
+      raw: request,
+      filePath: filePath ?? "",
+      entryIndex: selectedEntry,
+    };
     setHistory((prev) => {
-      const filtered = prev.filter((h) => h !== request);
-      return [request, ...filtered].slice(0, 10);
+      const filtered = prev.filter((h) => !(h.raw === entry.raw && h.filePath === entry.filePath));
+      return [entry, ...filtered].slice(0, 10);
     });
     const allVars = { ...(collection?.variables ?? {}), ...envVars };
     const resolved = substituteVariables(request, allVars);
@@ -290,7 +354,7 @@ export default function App({ initialFile }: AppProps) {
     } finally {
       setLoading(false);
     }
-  }, [request, collection, envVars]);
+  }, [request, collection, envVars, filePath, selectedEntry]);
 
   useInput((input, key) => {
     // Skip all key handling when a text input is active
@@ -310,35 +374,7 @@ export default function App({ initialFile }: AppProps) {
 
     // Global: r jumps to last sent request
     if (input === "r" && (view === "file-browser" || view === "collection") && history.length > 0) {
-      // Try current collection first
-      if (collection) {
-        const matchIdx = collection.entries.findIndex((e) => e.raw === history[0]);
-        if (matchIdx !== -1) {
-          handleEntrySelect(matchIdx);
-          return;
-        }
-      }
-      // Fall back to loading from settings (possibly different file)
-      const settings = loadSettings(process.cwd());
-      if (settings.lastFile && existsSync(settings.lastFile)) {
-        try {
-          const content = loadFile(settings.lastFile);
-          const col = parseCollection(content);
-          const ancestors = getAncestorVariables(settings.lastFile);
-          col.variables = { ...ancestors, ...col.variables };
-          const matchIdx = col.entries.findIndex((e) => e.raw === history[0]);
-          const entryIdx = matchIdx !== -1 ? matchIdx : (settings.lastEntry ?? 0);
-          if (entryIdx < col.entries.length) {
-            setFilePath(settings.lastFile);
-            setCollection(col);
-            setSelectedEntry(entryIdx);
-            setRequest(col.entries[entryIdx].raw);
-            setView("request");
-          }
-        } catch {
-          // Parse error — ignore
-        }
-      }
+      loadHistoryEntry(history[0]);
       return;
     }
 
@@ -510,18 +546,7 @@ export default function App({ initialFile }: AppProps) {
     if (numKey >= 1 && numKey <= 10) {
       const idx = numKey - 1;
       if (focus === "request" && idx < history.length) {
-        const historyReq = history[idx];
-        setRequest(historyReq);
-        if (collection) {
-          const matchIdx = collection.entries.findIndex((e) => e.raw === historyReq);
-          if (matchIdx !== -1) setSelectedEntry(matchIdx);
-        }
-        setResponse(null);
-        setError(null);
-        setResolvedRequest(null);
-        setRequestScroll(0);
-        setResponseScroll(0);
-        setFocus("request");
+        loadHistoryEntry(history[idx]);
       } else if (focus === "response" && idx < responseHistory.length) {
         setResponse(responseHistory[idx]);
         setResponseScroll(0);

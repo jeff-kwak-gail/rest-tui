@@ -22,6 +22,12 @@ export interface Settings {
   lastEntry?: number;
 }
 
+export interface RequestHistoryEntry {
+  raw: string;
+  filePath: string;
+  entryIndex: number;
+}
+
 function ensureSettingsDir(cwd: string): string {
   const dirPath = join(cwd, SETTINGS_DIR);
 
@@ -75,18 +81,24 @@ export function saveSettings(cwd: string, settings: Settings): void {
   writeFileSync(path, stringify(settings), "utf-8");
 }
 
-export function loadRequestHistory(cwd: string): string[] {
+export function loadRequestHistory(cwd: string): RequestHistoryEntry[] {
   const dir = ensureSettingsDir(cwd);
   const path = join(dir, REQUEST_HISTORY_FILE);
   if (!existsSync(path)) return [];
   try {
-    return JSON.parse(readFileSync(path, "utf-8"));
+    const parsed = JSON.parse(readFileSync(path, "utf-8"));
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((item) =>
+      typeof item === "string"
+        ? { raw: item, filePath: "", entryIndex: -1 }
+        : { raw: item.raw ?? "", filePath: item.filePath ?? "", entryIndex: item.entryIndex ?? -1 }
+    );
   } catch {
     return [];
   }
 }
 
-export function saveRequestHistory(cwd: string, history: string[]): void {
+export function saveRequestHistory(cwd: string, history: RequestHistoryEntry[]): void {
   const dir = ensureSettingsDir(cwd);
   writeFileSync(join(dir, REQUEST_HISTORY_FILE), JSON.stringify(history, null, 2), "utf-8");
 }

@@ -2,6 +2,7 @@ import chalk from "chalk";
 import cliTruncate from "cli-truncate";
 import stringWidth from "string-width";
 import type { HttpResponse } from "./execute-request.js";
+import type { RequestHistoryEntry } from "./settings.js";
 
 function padLine(line: string, targetWidth: number): string {
   const truncated = cliTruncate(line || "", targetWidth, {
@@ -47,7 +48,7 @@ export function renderCommandBar(
   screenWidth: number,
   env?: string | null
 ): string {
-  const title = chalk.bold.cyan("rest-tui v0.13.1");
+  const title = chalk.bold.cyan("rest-tui v0.13.2");
   const envStr = env ? "  " + chalk.yellow(`[${env}]`) : "";
   const hintsStr = hints.map((h) => chalk.gray(h)).join("  ");
   const line = title + envStr + "  " + hintsStr;
@@ -66,7 +67,7 @@ function getHistoryLabel(raw: string): string {
 }
 
 export function renderHistoryPanel(
-  history: string[],
+  history: RequestHistoryEntry[],
   contentWidth: number
 ): string[] {
   const lines: string[] = [];
@@ -80,7 +81,7 @@ export function renderHistoryPanel(
   } else {
     for (let i = 0; i < history.length; i++) {
       const num = i < 9 ? String(i + 1) : "0";
-      lines.push(chalk.yellow(num) + "  " + chalk.dim(getHistoryLabel(history[i])));
+      lines.push(chalk.yellow(num) + "  " + chalk.dim(getHistoryLabel(history[i].raw)));
     }
   }
   return lines;
