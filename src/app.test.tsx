@@ -23,7 +23,7 @@ describe("App", () => {
     const { lastFrame } = render(<App />);
     const frame = lastFrame()!;
     expect(frame).toContain("rest-tui");
-    expect(frame).toContain("v0.12.8");
+    expect(frame).toContain("v0.13.1");
   });
 
   it("shows file browser when no file given", () => {

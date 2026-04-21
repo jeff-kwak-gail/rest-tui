@@ -45,7 +45,7 @@ function CommandBar({ hints, env }: { hints: string[]; env?: string | null }) {
   return (
     <Box width="100%" gap={2}>
       <Text bold color="cyan">
-        rest-tui v0.12.8
+        rest-tui v0.13.1
       </Text>
       {env ? (
         <Text color="yellow">[{env}]</Text>
@@ -308,6 +308,40 @@ export default function App({ initialFile }: AppProps) {
       return;
     }
 
+    // Global: r jumps to last sent request
+    if (input === "r" && (view === "file-browser" || view === "collection") && history.length > 0) {
+      // Try current collection first
+      if (collection) {
+        const matchIdx = collection.entries.findIndex((e) => e.raw === history[0]);
+        if (matchIdx !== -1) {
+          handleEntrySelect(matchIdx);
+          return;
+        }
+      }
+      // Fall back to loading from settings (possibly different file)
+      const settings = loadSettings(process.cwd());
+      if (settings.lastFile && existsSync(settings.lastFile)) {
+        try {
+          const content = loadFile(settings.lastFile);
+          const col = parseCollection(content);
+          const ancestors = getAncestorVariables(settings.lastFile);
+          col.variables = { ...ancestors, ...col.variables };
+          const matchIdx = col.entries.findIndex((e) => e.raw === history[0]);
+          const entryIdx = matchIdx !== -1 ? matchIdx : (settings.lastEntry ?? 0);
+          if (entryIdx < col.entries.length) {
+            setFilePath(settings.lastFile);
+            setCollection(col);
+            setSelectedEntry(entryIdx);
+            setRequest(col.entries[entryIdx].raw);
+            setView("request");
+          }
+        } catch {
+          // Parse error — ignore
+        }
+      }
+      return;
+    }
+
     // Global: n opens env picker from any view (except env-picker itself)
     if (input === "n" && view !== "env-picker") {
       setPreviousView(view);
@@ -533,9 +567,9 @@ export default function App({ initialFile }: AppProps) {
   const currentHints = (() => {
     switch (view) {
       case "file-browser":
-        return ["j/k - navigate", "h/l - collapse/expand", "/ - search", "enter - select", "e - edit", "c - create", "n - env", "q - quit"];
+        return ["j/k - navigate", "h/l - collapse/expand", "/ - search", "enter - select", "e - edit", "c - create", "r - last sent", "n - env", "q - quit"];
       case "collection":
-        return ["j/k - navigate", "/ - search", "enter - select", "e - edit", "c - create", "v - vars", "n - env", "esc - back", "q - quit"];
+        return ["j/k - navigate", "/ - search", "enter - select", "e - edit", "c - create", "r - last sent", "v - vars", "n - env", "esc - back", "q - quit"];
       case "variables":
         return ["e - edit", "n - env", "esc - back", "q - quit"];
       case "env-picker":
