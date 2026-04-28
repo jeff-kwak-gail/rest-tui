@@ -155,6 +155,7 @@ Switch environments with `n` from any view. Create new environments with `c` in 
 | `g` / `G`     | Jump to top/bottom            |
 | `Tab`          | Switch focus to request       |
 | `h`           | Toggle response history        |
+| `e`           | Open response body in `$EDITOR` |
 | `1`-`9`, `0`  | Jump to history item           |
 
 ### Environment Picker

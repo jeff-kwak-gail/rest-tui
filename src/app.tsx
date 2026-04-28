@@ -26,7 +26,7 @@ import {
   saveResponseHistory,
   type RequestHistoryEntry,
 } from "./settings.js";
-import { openInEditor } from "./editor.js";
+import { openInEditor, openContentInEditor } from "./editor.js";
 import { executeRequest, type HttpResponse } from "./execute-request.js";
 import {
   parseCollection,
@@ -46,7 +46,7 @@ function CommandBar({ hints, env }: { hints: string[]; env?: string | null }) {
   return (
     <Box width="100%" gap={2}>
       <Text bold color="cyan">
-        rest-tui v0.13.3
+        rest-tui v0.14.0
       </Text>
       {env ? (
         <Text color="yellow">[{env}]</Text>
@@ -554,6 +554,26 @@ export default function App({ initialFile }: AppProps) {
         setView("collection");
       }
     }
+    if (input === "e" && focus === "response" && response) {
+      const contentType = response.headers["content-type"] || "";
+      let body = response.body;
+      let ext = "txt";
+      if (contentType.includes("json")) {
+        ext = "json";
+        try {
+          body = JSON.stringify(JSON.parse(body), null, 2);
+        } catch {
+          // leave raw
+        }
+      } else if (contentType.includes("html")) {
+        ext = "html";
+      } else if (contentType.includes("xml")) {
+        ext = "xml";
+      }
+      setRawMode(false);
+      openContentInEditor(body, ext);
+      setRawMode(true);
+    }
     if (key.return && focus === "request" && !loading) {
       sendRequest();
     }
@@ -625,7 +645,7 @@ export default function App({ initialFile }: AppProps) {
         return ["j/k - navigate", "enter - select", "e - edit", "c - create", "esc - back", "q - quit"];
       case "request":
         return focus === "response"
-          ? ["j/k - scroll", "u/d - page", "g/G - top/bottom", "h - history", "tab - request", "v - vars", "n - env", "esc - back", "q - quit"]
+          ? ["j/k - scroll", "u/d - page", "g/G - top/bottom", "h - history", "e - edit", "tab - request", "v - vars", "n - env", "esc - back", "q - quit"]
           : ["enter - send", "e - edit", "h - history", "tab - response", "v - vars", "n - env", "j/k - scroll", "esc - back", "q - quit"];
     }
   })();
